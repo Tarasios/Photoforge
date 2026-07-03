@@ -22,4 +22,7 @@ pub enum Error {
 
     #[error("database error: {0}")]
     Db(#[from] rusqlite::Error),
+
+    #[error("json sidecar parse failed: {0}")]
+    Json(#[from] serde_json::Error),
 }

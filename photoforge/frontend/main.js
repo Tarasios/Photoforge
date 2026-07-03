@@ -27,7 +27,7 @@ wire("scan-btn", async () => {
   out.textContent = "Scanning…";
   try {
     const s = await invoke("scan_dir", { root });
-    out.textContent = `Found ${s.photos} photo(s), ${s.errors} error(s) in ${s.root} (core v${s.core_version}).`;
+    out.textContent = `Scanned ${s.scanned}, added ${s.added}, skipped ${s.skipped}, errors ${s.errors} (core v${s.core_version}).`;
   } catch (err) {
     out.textContent = `Error: ${err}`;
   }

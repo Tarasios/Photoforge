@@ -1,46 +1,28 @@
-//! Recursive filesystem scanning, parallelized with rayon.
+//! Recursive filesystem enumeration of image files (walkdir).
 
-use crate::{hash, Photo, Result};
-use rayon::prelude::*;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-/// File extensions we treat as photos.
-const PHOTO_EXTS: &[&str] = &["jpg", "jpeg", "png", "gif", "tif", "tiff", "webp", "heic", "bmp"];
+/// Image extensions the indexer recognizes (lowercased comparison).
+pub const IMAGE_EXTS: &[&str] = &["jpg", "jpeg", "png", "heic", "webp", "bmp", "gif"];
 
-fn is_photo(path: &Path) -> bool {
+/// Whether `path` has one of the recognized image extensions.
+pub fn is_image(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|e| PHOTO_EXTS.contains(&e.to_ascii_lowercase().as_str()))
+        .map(|e| IMAGE_EXTS.contains(&e.to_ascii_lowercase().as_str()))
         .unwrap_or(false)
 }
 
-/// Walk `root` recursively and return the paths of every photo file found.
-pub fn find_photos(root: impl AsRef<Path>) -> Vec<PathBuf> {
+/// Walk `root` recursively, returning the path of every image file found.
+/// Unreadable entries are silently skipped (the indexer surfaces per-file
+/// errors separately when it tries to process them).
+pub fn enumerate_images(root: impl AsRef<Path>) -> Vec<PathBuf> {
     WalkDir::new(root)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
         .map(|e| e.into_path())
-        .filter(|p| is_photo(p))
-        .collect()
-}
-
-/// Build [`Photo`] records for a directory tree, hashing and reading EXIF for
-/// each file in parallel across the rayon thread pool.
-pub fn scan(root: impl AsRef<Path>) -> Vec<Result<Photo>> {
-    find_photos(root)
-        .into_par_iter()
-        .map(|path| {
-            let size = std::fs::metadata(&path)?.len();
-            let content_hash = hash::hash_file(&path)?;
-            let captured_at = crate::exif::captured_at(&path).ok().flatten();
-            Ok(Photo {
-                path,
-                size,
-                content_hash,
-                captured_at,
-            })
-        })
+        .filter(|p| is_image(p))
         .collect()
 }

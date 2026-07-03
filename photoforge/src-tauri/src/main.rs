@@ -7,23 +7,30 @@ use serde::Serialize;
 #[derive(Serialize)]
 struct ScanSummary {
     root: String,
-    photos: usize,
+    scanned: usize,
+    added: usize,
+    skipped: usize,
     errors: usize,
     core_version: String,
 }
 
-/// Scan a directory for photos and report a summary. Invoked from JS via
+/// Index a directory of photos and report stats. Invoked from JS via
 /// `window.__TAURI__.core.invoke('scan_dir', { root })`.
+///
+/// This uses a throwaway in-memory catalog so the command is side-effect free;
+/// the persistent catalog will be wired up in a later phase.
 #[tauri::command]
-fn scan_dir(root: String) -> ScanSummary {
-    let results = photoforge_core::scan::scan(&root);
-    let errors = results.iter().filter(|r| r.is_err()).count();
-    ScanSummary {
+fn scan_dir(root: String) -> Result<ScanSummary, String> {
+    let mut conn = photoforge_core::db::open_in_memory().map_err(|e| e.to_string())?;
+    let stats = photoforge_core::index_directory(&mut conn, &root).map_err(|e| e.to_string())?;
+    Ok(ScanSummary {
         root,
-        photos: results.len() - errors,
-        errors,
+        scanned: stats.scanned,
+        added: stats.added,
+        skipped: stats.skipped,
+        errors: stats.errors,
         core_version: photoforge_core::version().to_string(),
-    }
+    })
 }
 
 /// Simple greeting used by the starter UI to prove the JS <-> Rust bridge works.
