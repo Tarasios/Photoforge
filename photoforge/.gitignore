@@ -1,0 +1,10 @@
+# Rust / Cargo
+/target
+**/*.rs.bk
+
+# Tauri generated (schemas, etc.)
+/src-tauri/gen
+
+# OS cruft
+.DS_Store
+Thumbs.db
