@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>photoforge</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <h1>photoforge</h1>
+        <p class="tagline">Organize your photos, locally and fast.</p>
+      </header>
+
+      <section class="card">
+        <label for="name">Say hello to the Rust core</label>
+        <div class="row">
+          <input id="name" type="text" placeholder="your name" value="world" />
+          <button id="greet-btn" type="button">Greet</button>
+        </div>
+        <p id="greet-out" class="out"></p>
+      </section>
+
+      <section class="card">
+        <label for="root">Scan a folder for photos</label>
+        <div class="row">
+          <input id="root" type="text" placeholder="C:\\Users\\you\\Pictures" />
+          <button id="scan-btn" type="button">Scan</button>
+        </div>
+        <p id="scan-out" class="out"></p>
+      </section>
+    </main>
+
+    <script src="main.js"></script>
+  </body>
+</html>
