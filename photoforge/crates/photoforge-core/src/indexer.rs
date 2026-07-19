@@ -11,7 +11,9 @@
 //!     database is touched only on the calling thread (rusqlite is not `Sync`).
 
 use crate::date;
+use crate::dhash;
 use crate::exif::{self, ExifData};
+use crate::hash;
 use crate::scan;
 use crate::sidecar::{self, Sidecar};
 use crate::{db, Result};
@@ -43,6 +45,12 @@ pub struct IndexedFile {
     pub sidecar_lon: Option<f64>,
     pub resolved_date: Option<String>,
     pub date_source: Option<String>,
+    /// BLAKE3 content hash (32 raw bytes) — exact-duplicate detection.
+    #[serde(skip)]
+    pub blake3: Option<Vec<u8>>,
+    /// 64-bit perceptual dHash — near-duplicate detection. Stored as `i64`
+    /// because SQLite INTEGER is signed; the bit pattern is what matters.
+    pub dhash: Option<i64>,
 }
 
 /// Summary of an indexing run.
@@ -130,6 +138,15 @@ fn process_one(path: &Path, existing: &HashMap<String, (i64, i64)>) -> Outcome {
     let sidecar = sidecar::find_and_parse(path).unwrap_or_default();
     let (resolved_date, date_source) = resolve_date(&exif, &sidecar, path, mtime);
 
+    // Hashing happens here, inside the rayon worker, so it parallelizes with
+    // the rest of the per-file work. Failures degrade to NULL, not errors:
+    // blake3 only fails on unreadable files, dhash also on undecodable ones
+    // (e.g. HEIC, which the `image` crate can't decode).
+    let blake3 = hash::blake3_file(path).ok().map(|b| b.to_vec());
+    let dhash = dhash::dhash_file(path, exif.orientation)
+        .ok()
+        .map(|h| h as i64);
+
     Outcome::Added(Box::new(IndexedFile {
         path: path_str,
         size,
@@ -148,6 +165,8 @@ fn process_one(path: &Path, existing: &HashMap<String, (i64, i64)>) -> Outcome {
         sidecar_lon: sidecar.lon,
         resolved_date,
         date_source,
+        blake3,
+        dhash,
     }))
 }
 

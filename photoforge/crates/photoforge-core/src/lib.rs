@@ -10,6 +10,7 @@
 
 pub mod date;
 pub mod db;
+pub mod dhash;
 pub mod error;
 pub mod exif;
 pub mod hash;

@@ -16,3 +16,13 @@ serde_json = "1"
 thiserror = "2"
 kamadak-exif = "0.6"
 blake3 = "1"
+
+# criterion is a dev-only dependency (never ships in the app binary), added
+# because the spec explicitly requires criterion benchmarks for dhash
+# throughput and naive-vs-BK-tree search.
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "dhash"
+harness = false

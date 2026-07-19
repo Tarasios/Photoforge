@@ -10,49 +10,10 @@ use rusqlite::{params, Connection};
 use std::collections::HashMap;
 use std::path::Path;
 
-/// Full catalog schema.
-///
-/// This is the schema from the project spec, with two intentional deviations
-/// (see the crate/PR notes):
-///   * `files.exif_create_date` was added — the spec asks us to store both EXIF
-///     `DateTimeOriginal` *and* `CreateDate`, but the original schema had only a
-///     single `exif_datetime` column, which is structurally too small.
-///   * `IF NOT EXISTS` was added throughout so opening an existing catalog is
-///     idempotent (required for a resumable indexer).
-const SCHEMA: &str = "
-CREATE TABLE IF NOT EXISTS files (
-  id INTEGER PRIMARY KEY,
-  path TEXT NOT NULL UNIQUE,
-  size INTEGER NOT NULL,
-  mtime INTEGER NOT NULL,
-  width INTEGER, height INTEGER,
-  exif_datetime TEXT, exif_create_date TEXT, exif_make TEXT, exif_model TEXT,
-  gps_lat REAL, gps_lon REAL, orientation INTEGER,
-  sidecar_taken_time TEXT, sidecar_lat REAL, sidecar_lon REAL,
-  resolved_date TEXT, date_source TEXT,          -- 'exif'|'sidecar'|'filename'|'mtime'
-  classification TEXT, class_confidence REAL,    -- Phase 2
-  class_rule TEXT
-);
-CREATE TABLE IF NOT EXISTS hashes (
-  file_id INTEGER PRIMARY KEY REFERENCES files(id),
-  blake3 BLOB, dhash INTEGER                      -- dhash as i64 bit pattern
-);
-CREATE INDEX IF NOT EXISTS idx_hashes_blake3 ON hashes(blake3);
-CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
-CREATE TABLE IF NOT EXISTS file_tags (file_id INTEGER REFERENCES files(id), tag_id INTEGER REFERENCES tags(id), PRIMARY KEY(file_id, tag_id));
-CREATE TABLE IF NOT EXISTS people (id INTEGER PRIMARY KEY, name TEXT UNIQUE);
-CREATE TABLE IF NOT EXISTS faces (
-  id INTEGER PRIMARY KEY, file_id INTEGER REFERENCES files(id),
-  bbox_x REAL, bbox_y REAL, bbox_w REAL, bbox_h REAL,
-  embedding BLOB,                                 -- 512 x f32
-  person_id INTEGER REFERENCES people(id),        -- NULL = unlabeled
-  cluster_id INTEGER
-);
-CREATE TABLE IF NOT EXISTS undo_log (
-  id INTEGER PRIMARY KEY, ts INTEGER,
-  op TEXT, src_path TEXT, dst_path TEXT
-);
-";
+/// Full catalog schema, loaded from `schema.sql` — the single source of truth.
+// `include_str!` embeds the file's text into the binary at compile time, so
+// there is no runtime file lookup (think Java resource, but resolved by rustc).
+const SCHEMA: &str = include_str!("schema.sql");
 
 /// Number of rows written per transaction.
 const BATCH_SIZE: usize = 1000;
@@ -115,14 +76,23 @@ ON CONFLICT(path) DO UPDATE SET
   date_source = excluded.date_source
 ";
 
-/// Insert/upsert `files` in batches, one transaction per [`BATCH_SIZE`] rows.
-/// Returns the number of rows written.
+const INSERT_HASHES_SQL: &str = "
+INSERT INTO hashes (file_id, blake3, dhash)
+VALUES ((SELECT id FROM files WHERE path = ?1), ?2, ?3)
+ON CONFLICT(file_id) DO UPDATE SET
+  blake3 = excluded.blake3,
+  dhash = excluded.dhash
+";
+
+/// Insert/upsert `files` (and their hashes) in batches, one transaction per
+/// [`BATCH_SIZE`] rows. Returns the number of file rows written.
 pub fn insert_files(conn: &mut Connection, files: &[IndexedFile]) -> Result<usize> {
     let mut written = 0;
     for chunk in files.chunks(BATCH_SIZE) {
         let tx = conn.transaction()?;
         {
             let mut stmt = tx.prepare_cached(INSERT_SQL)?;
+            let mut hash_stmt = tx.prepare_cached(INSERT_HASHES_SQL)?;
             for f in chunk {
                 stmt.execute(params![
                     f.path,
@@ -143,6 +113,9 @@ pub fn insert_files(conn: &mut Connection, files: &[IndexedFile]) -> Result<usiz
                     f.resolved_date,
                     f.date_source,
                 ])?;
+                if f.blake3.is_some() || f.dhash.is_some() {
+                    hash_stmt.execute(params![f.path, f.blake3, f.dhash])?;
+                }
                 written += 1;
             }
         }
