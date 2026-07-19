@@ -1,0 +1,11 @@
+# Personal working notes — not part of the published project.
+/Claude.md
+/CLAUDE.md
+/NOTES.md
+/photoforge-claude-code-prompts.md
+
+# Local catalogs / scratch output
+*.db
+*.db-shm
+*.db-wal
+photoforge_labels.csv
