@@ -16,6 +16,7 @@ pub mod error;
 pub mod exif;
 pub mod hash;
 pub mod indexer;
+pub mod organize;
 pub mod scan;
 pub mod sidecar;
 pub mod thumbnail;
