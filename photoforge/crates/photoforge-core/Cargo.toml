@@ -26,3 +26,7 @@ criterion = "0.5"
 [[bench]]
 name = "dhash"
 harness = false
+
+[[bench]]
+name = "neardup"
+harness = false
