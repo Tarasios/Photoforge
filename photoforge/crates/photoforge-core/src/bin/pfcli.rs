@@ -8,6 +8,8 @@
 //!     pfcli classify [--db <path>]
 //!     pfcli accuracy <labels.csv> [--db <path>]
 //!     pfcli undo [--count <n>] [--db <path>]
+//!     pfcli status [--db <path>]
+//!     pfcli skip <add|remove|list> [folder] [--db <path>]
 //!
 //! `organize` defaults to dry-run (prints the plan); pass --apply to execute.
 //! The stopwatch prints wall time for every command (for quick perf checks).
@@ -24,7 +26,9 @@ const USAGE: &str = "usage: pfcli <index|dupes|near-dupes|organize|classify|accu
     organize <target_root> [--db <path>] [--apply] [--copy]
     classify [--db <path>]
     accuracy <labels.csv> [--db <path>]
-    undo [--count <n>] [--db <path>]";
+    undo [--count <n>] [--db <path>]
+    status [--db <path>]
+    skip <add|remove|list> [folder] [--db <path>]";
 
 /// Hand-rolled flag parsing (keeping the dependency tree lean — no clap).
 struct Args {
@@ -166,6 +170,44 @@ fn run() -> Result<(), String> {
                 .unwrap_or(1);
             let stats = organize::undo_last(&mut conn, count).map_err(|e| e.to_string())?;
             println!("undo: {} restored, {} errors", stats.moved, stats.errors);
+        }
+        "status" => {
+            let roots = db::list_scan_roots(&conn).map_err(|e| e.to_string())?;
+            println!("indexed folders ({}):", roots.len());
+            for r in &roots {
+                println!(
+                    "  {}  ({} files, {} errors, last scan ts {})",
+                    r.path, r.scanned, r.errors, r.last_scan_ts
+                );
+            }
+            let skips = db::list_skip_dirs(&conn).map_err(|e| e.to_string())?;
+            println!("user skip folders ({}):", skips.len());
+            for s in &skips {
+                println!("  {s}");
+            }
+            println!(
+                "built-in skips: {}",
+                photoforge_core::scan::BUILTIN_SKIP_DIRS.join(", ")
+            );
+        }
+        "skip" => {
+            let sub = args.positional.first().map(String::as_str).ok_or(USAGE)?;
+            match (sub, args.positional.get(1)) {
+                ("add", Some(p)) => {
+                    db::add_skip_dir(&conn, p).map_err(|e| e.to_string())?;
+                    println!("added skip: {p}");
+                }
+                ("remove", Some(p)) => {
+                    db::remove_skip_dir(&conn, p).map_err(|e| e.to_string())?;
+                    println!("removed skip: {p}");
+                }
+                ("list", _) => {
+                    for s in db::list_skip_dirs(&conn).map_err(|e| e.to_string())? {
+                        println!("{s}");
+                    }
+                }
+                _ => return Err(USAGE.to_string()),
+            }
         }
         _ => return Err(USAGE.to_string()),
     }

@@ -37,3 +37,17 @@ CREATE TABLE IF NOT EXISTS undo_log (
   id INTEGER PRIMARY KEY, ts INTEGER,
   op TEXT, src_path TEXT, dst_path TEXT
 );
+-- Folders the user has indexed, with the stats of the most recent run.
+CREATE TABLE IF NOT EXISTS scan_roots (
+  id INTEGER PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE,
+  last_scan_ts INTEGER NOT NULL,
+  scanned INTEGER NOT NULL, added INTEGER NOT NULL,
+  skipped INTEGER NOT NULL, errors INTEGER NOT NULL
+);
+-- User-added folders the scanner must never descend into (absolute paths).
+-- Built-in system skips (Windows, Program Files, …) live in code, not here.
+CREATE TABLE IF NOT EXISTS skip_dirs (
+  id INTEGER PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE
+);

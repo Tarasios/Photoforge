@@ -74,16 +74,40 @@ enum Outcome {
 
 /// Index every image under `root` into the open catalog `conn`, returning stats.
 pub fn index_directory(conn: &mut Connection, root: impl AsRef<Path>) -> Result<IndexStats> {
+    index_directory_with_progress(conn, root, |_, _| {})
+}
+
+/// Like [`index_directory`], but invokes `progress(done, total)` from worker
+/// threads as files complete — the hook the UI uses to stream progress events.
+// `Fn(...) + Sync` is a trait bound: any closure callable from multiple
+// threads at once qualifies (closest Java analogue: a thread-safe lambda).
+pub fn index_directory_with_progress<F>(
+    conn: &mut Connection,
+    root: impl AsRef<Path>,
+    progress: F,
+) -> Result<IndexStats>
+where
+    F: Fn(usize, usize) + Sync,
+{
     // Snapshot existing rows so parallel workers can skip unchanged files
     // without touching the (non-Sync) database connection.
     let existing = db::load_index_state(conn)?;
+    let user_skips = db::list_skip_dirs(conn)?;
 
-    let paths = scan::enumerate_images(root);
+    let paths = scan::enumerate_images(root.as_ref(), &user_skips);
     let scanned = paths.len();
 
+    // AtomicUsize gives lock-free interior mutability for the shared counter
+    // (Rust won't let plain `&mut` state cross threads).
+    let done = std::sync::atomic::AtomicUsize::new(0);
     let outcomes: Vec<Outcome> = paths
         .par_iter()
-        .map(|path| process_one(path, &existing))
+        .map(|path| {
+            let out = process_one(path, &existing);
+            let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            progress(n, scanned);
+            out
+        })
         .collect();
 
     let mut to_insert = Vec::new();
@@ -99,12 +123,22 @@ pub fn index_directory(conn: &mut Connection, root: impl AsRef<Path>) -> Result<
 
     let added = db::insert_files(conn, &to_insert)?;
 
-    Ok(IndexStats {
+    let stats = IndexStats {
         scanned,
         added,
         skipped,
         errors,
-    })
+    };
+
+    // Remember this folder in the scan history so the UI can show what has
+    // been processed and when.
+    let ts = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    db::record_scan_root(conn, &root.as_ref().to_string_lossy(), ts, &stats)?;
+
+    Ok(stats)
 }
 
 fn mtime_secs(meta: &Metadata) -> i64 {

@@ -49,6 +49,84 @@ pub fn load_index_state(conn: &Connection) -> Result<HashMap<String, (i64, i64)>
     Ok(map)
 }
 
+/// A folder the user has indexed, with the stats of its most recent scan.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ScanRoot {
+    pub path: String,
+    pub last_scan_ts: i64,
+    pub scanned: i64,
+    pub added: i64,
+    pub skipped: i64,
+    pub errors: i64,
+}
+
+/// Upsert the record of a completed scan of `root`.
+pub fn record_scan_root(
+    conn: &Connection,
+    root: &str,
+    ts: i64,
+    stats: &crate::indexer::IndexStats,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO scan_roots (path, last_scan_ts, scanned, added, skipped, errors)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(path) DO UPDATE SET
+           last_scan_ts = excluded.last_scan_ts,
+           scanned = excluded.scanned, added = excluded.added,
+           skipped = excluded.skipped, errors = excluded.errors",
+        params![
+            root,
+            ts,
+            stats.scanned as i64,
+            stats.added as i64,
+            stats.skipped as i64,
+            stats.errors as i64
+        ],
+    )?;
+    Ok(())
+}
+
+/// Every folder ever indexed, most recently scanned first.
+pub fn list_scan_roots(conn: &Connection) -> Result<Vec<ScanRoot>> {
+    let mut stmt = conn.prepare(
+        "SELECT path, last_scan_ts, scanned, added, skipped, errors
+         FROM scan_roots ORDER BY last_scan_ts DESC",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(ScanRoot {
+            path: r.get(0)?,
+            last_scan_ts: r.get(1)?,
+            scanned: r.get(2)?,
+            added: r.get(3)?,
+            skipped: r.get(4)?,
+            errors: r.get(5)?,
+        })
+    })?;
+    rows.collect::<std::result::Result<_, _>>().map_err(Into::into)
+}
+
+/// User-defined skip folders (absolute paths the scanner never enters).
+pub fn list_skip_dirs(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT path FROM skip_dirs ORDER BY path")?;
+    let rows = stmt.query_map([], |r| r.get(0))?;
+    rows.collect::<std::result::Result<_, _>>().map_err(Into::into)
+}
+
+/// Add a folder to the user skip list (no-op if already present).
+pub fn add_skip_dir(conn: &Connection, path: &str) -> Result<()> {
+    conn.execute(
+        "INSERT OR IGNORE INTO skip_dirs (path) VALUES (?1)",
+        params![path],
+    )?;
+    Ok(())
+}
+
+/// Remove a folder from the user skip list.
+pub fn remove_skip_dir(conn: &Connection, path: &str) -> Result<()> {
+    conn.execute("DELETE FROM skip_dirs WHERE path = ?1", params![path])?;
+    Ok(())
+}
+
 const INSERT_SQL: &str = "
 INSERT INTO files (
   path, size, mtime, width, height,

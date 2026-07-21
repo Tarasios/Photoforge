@@ -23,7 +23,7 @@ pub mod sidecar;
 pub mod thumbnail;
 
 pub use error::{Error, Result};
-pub use indexer::{index_directory, IndexStats, IndexedFile};
+pub use indexer::{index_directory, index_directory_with_progress, IndexStats, IndexedFile};
 
 /// Version string of the core library, sourced from Cargo at compile time.
 pub fn version() -> &'static str {
