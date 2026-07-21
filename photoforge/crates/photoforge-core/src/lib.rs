@@ -8,6 +8,7 @@
 //! The headline entry point is [`index_directory`], a parallel, resumable
 //! indexer that walks a tree, extracts metadata, and batch-writes it to SQLite.
 
+pub mod classify;
 pub mod date;
 pub mod db;
 pub mod dedupe;
