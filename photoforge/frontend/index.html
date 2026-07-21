@@ -3,32 +3,136 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>photoforge</title>
+    <title>PhotoForge</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <!-- First-run guide -->
+    <div id="onboarding" class="overlay hidden">
+      <div class="onboard-card">
+        <h2>Welcome to PhotoForge</h2>
+        <p class="dim">A local-first photo organizer. Everything runs on your PC — no cloud, no telemetry.</p>
+        <ol class="steps">
+          <li><strong>Scan</strong> — pick a folder (e.g. your Pictures folder). PhotoForge indexes
+              every photo's metadata and fingerprints. Re-scanning is fast: unchanged files are skipped.</li>
+          <li><strong>Duplicates</strong> — review exact and near-duplicate groups side by side and
+              move the extras to a <code>_Duplicates</code> folder. Nothing is ever deleted, and every
+              move can be undone.</li>
+          <li><strong>Review</strong> — let the classifier separate real photos from screenshots and
+              app assets, then confirm or fix its guesses with the keyboard (Y / N / arrows).</li>
+        </ol>
+        <p class="dim small">System folders (Windows, Program Files, the Recycle Bin…) are skipped
+           automatically. You can add your own skip folders on the Library screen.</p>
+        <div class="row end">
+          <button id="onboard-close" class="primary" type="button">Get started</button>
+        </div>
+      </div>
+    </div>
+
     <main class="shell">
       <header>
-        <h1>photoforge</h1>
-        <p class="tagline">Organize your photos, locally and fast.</p>
+        <div class="brand">
+          <h1>PhotoForge</h1>
+          <span class="tagline">local-first photo organizer</span>
+        </div>
+        <nav id="tabs">
+          <button class="tab active" data-screen="scan">Library</button>
+          <button class="tab" data-screen="dupes">Duplicates</button>
+          <button class="tab" data-screen="review">Review</button>
+        </nav>
+        <button id="help-btn" class="ghost" type="button" title="Show the getting-started guide">?</button>
       </header>
 
-      <section class="card">
-        <label for="name">Say hello to the Rust core</label>
-        <div class="row">
-          <input id="name" type="text" placeholder="your name" value="world" />
-          <button id="greet-btn" type="button">Greet</button>
+      <!-- ============================= Library ============================= -->
+      <section id="screen-scan" class="screen">
+        <div class="card">
+          <label for="root">Add a folder to your library</label>
+          <div class="row">
+            <input id="root" type="text" placeholder="C:\Users\you\Pictures" />
+            <button id="browse-btn" type="button">Browse…</button>
+            <button id="scan-btn" type="button" class="primary">Scan</button>
+          </div>
+          <div id="scan-progress" class="progress hidden">
+            <div id="scan-bar" class="bar"></div>
+          </div>
+          <p id="scan-out" class="out"></p>
         </div>
-        <p id="greet-out" class="out"></p>
+
+        <div class="card">
+          <label>Indexed folders</label>
+          <p class="dim small">Folders you've scanned. Re-scan any time — unchanged files are skipped.</p>
+          <div id="roots-empty" class="empty">Nothing indexed yet. Scan a folder above to get started.</div>
+          <table id="roots-table" class="hidden">
+            <thead>
+              <tr><th>Folder</th><th>Photos</th><th>Errors</th><th>Last scanned</th><th></th></tr>
+            </thead>
+            <tbody id="roots-body"></tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <label>Skipped folders</label>
+          <p class="dim small">The scanner never enters these. System folders are always skipped:</p>
+          <div id="builtin-skips" class="chips"></div>
+          <p class="dim small" style="margin-top:0.9rem">Your own skip folders:</p>
+          <ul id="user-skips" class="skip-list"></ul>
+          <div class="row">
+            <button id="add-skip-btn" type="button">Add folder to skip…</button>
+          </div>
+        </div>
       </section>
 
-      <section class="card">
-        <label for="root">Scan a folder for photos</label>
-        <div class="row">
-          <input id="root" type="text" placeholder="C:\\Users\\you\\Pictures" />
-          <button id="scan-btn" type="button">Scan</button>
+      <!-- =========================== Duplicates =========================== -->
+      <section id="screen-dupes" class="screen hidden">
+        <div class="card toolbar">
+          <div class="row">
+            <label class="inline">Mode
+              <select id="dupe-mode">
+                <option value="exact">Exact (byte-identical)</option>
+                <option value="near">Near (perceptual)</option>
+              </select>
+            </label>
+            <label class="inline" id="k-wrap">Threshold
+              <input id="dupe-k" type="number" min="0" max="16" value="5" />
+            </label>
+            <button id="find-dupes-btn" class="primary" type="button">Find duplicates</button>
+            <button id="keep-largest-btn" type="button">Keep largest</button>
+            <span class="spacer"></span>
+            <button id="move-selected-btn" class="danger" type="button">Move selected to _Duplicates</button>
+            <button id="undo-btn" type="button">Undo last move</button>
+          </div>
+          <p id="dupes-out" class="out"></p>
         </div>
-        <p id="scan-out" class="out"></p>
+        <div id="dupes-empty" class="empty card">Run a scan on the Library screen first, then click
+          <strong>Find duplicates</strong>. Checked files get moved; the largest copy in each group
+          stays put.</div>
+        <div id="dupe-groups"></div>
+      </section>
+
+      <!-- ============================= Review ============================= -->
+      <section id="screen-review" class="screen hidden">
+        <div class="card toolbar">
+          <div class="row">
+            <button id="classify-btn" class="primary" type="button">Run classifier</button>
+            <button id="load-review-btn" type="button">Load review queue</button>
+            <button id="export-csv-btn" type="button">Export corrections CSV</button>
+            <span class="spacer"></span>
+            <span class="hint"><kbd>Y</kbd> confirm &nbsp; <kbd>N</kbd> flip &nbsp; <kbd>←</kbd><kbd>→</kbd> navigate</span>
+          </div>
+          <p id="review-out" class="out"></p>
+        </div>
+        <div id="review-empty" class="empty card">Click <strong>Run classifier</strong> to label your
+          library (photo vs. screenshot/asset), then <strong>Load review queue</strong> to confirm
+          the least-certain guesses with the keyboard.</div>
+        <div id="review-stage" class="card review hidden">
+          <img id="review-img" alt="" />
+          <div class="review-meta">
+            <p id="review-path" class="mono"></p>
+            <p>Suggested: <strong id="review-label"></strong>
+               <span id="review-rule" class="dim"></span></p>
+            <p id="review-pos" class="dim"></p>
+          </div>
+        </div>
       </section>
     </main>
 

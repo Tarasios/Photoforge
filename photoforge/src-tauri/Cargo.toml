@@ -17,5 +17,12 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 photoforge-core = { path = "../crates/photoforge-core" }
 tauri = { version = "2", features = [] }
+# Official dialog plugin — the only supported way to get a native folder
+# picker in Tauri v2 (alternatives: rfd crate = an extra non-Tauri dep with
+# its own event-loop caveats, or making users paste paths by hand).
+tauri-plugin-dialog = "2"
+# rusqlite is already in the tree via photoforge-core; used here only to bind
+# params in thin command glue.
+rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
